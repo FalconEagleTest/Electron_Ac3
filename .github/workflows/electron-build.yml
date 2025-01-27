@@ -7,6 +7,11 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 720  # Build can take several hours
+    env:
+      PYTHONIOENCODING: 'utf-8'
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
+      DEPOT_TOOLS_UPDATE: '0'
+      CHROME_HEADLESS: '1'
     steps:
     - uses: actions/checkout@v4
     
@@ -55,16 +60,61 @@ jobs:
         echo "${{ github.workspace }}/depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     
     - name: Configure Windows Toolchain
+      shell: pwsh
       run: |
         $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
         $env:GYP_MSVS_OVERRIDE_PATH = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
         $env:DEPOT_TOOLS_UPDATE = "0"
+        $env:DEPOT_TOOLS_WIN_TOOLCHAIN_BASE = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+        
+        # Verify Visual Studio installation
+        if (!(Test-Path $env:GYP_MSVS_OVERRIDE_PATH)) {
+            throw "Visual Studio path not found"
+        }
     
-    - name: Fetch and Build Chromium
+    - name: Fetch Chromium
       run: |
-        fetch chromium
+        # Configure git for large checkouts
+        git config --global core.compression 0
+        git config --global core.packedGitLimit 512m
+        git config --global core.packedGitWindowSize 512m
+        git config --global pack.deltaCacheSize 2047m
+        git config --global pack.packSizeLimit 2047m
+        git config --global pack.windowMemory 2047m
+        
+        # Fetch Chromium
+        fetch --no-history chromium
+        
+    - name: Configure and Build Chromium
+      shell: pwsh
+      run: |
         cd src
-        gn gen out/Release --args='is_official_build=true is_debug=false use_proprietary_codecs=true ffmpeg_branding="Chrome" media_use_ffmpeg=true enable_hevc_parser=true enable_dolby_vision_support=true proprietary_codecs=true enable_platform_hevc=true enable_platform_ac3_audio=true enable_platform_dts_audio=true media_codecs_focus_on_extensions=true'
+        
+        # Create GN args file
+        $gnArgs = @"
+        is_official_build = true
+        is_debug = false
+        use_proprietary_codecs = true
+        ffmpeg_branding = "Chrome"
+        media_use_ffmpeg = true
+        enable_hevc_parser = true
+        enable_dolby_vision_support = true
+        proprietary_codecs = true
+        enable_platform_hevc = true
+        enable_platform_ac3_audio = true
+        enable_platform_dts_audio = true
+        media_codecs_focus_on_extensions = true
+        is_component_build = false
+        target_cpu = "x64"
+"@
+        
+        # Write args to file
+        $gnArgs | Out-File -FilePath "args.gn" -Encoding utf8
+        
+        # Generate ninja files
+        gn gen out/Release --args="$(Get-Content args.gn -Raw)"
+        
+        # Build Chrome
         autoninja -C out/Release chrome
     
     - name: Build Electron
