@@ -89,7 +89,6 @@ jobs:
     - name: Fetch Chromium
       shell: pwsh
       run: |
-        # Set environment variables
         $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
         $env:DEPOT_TOOLS_UPDATE = "0"
         $env:GIT_CACHE_PATH = "C:\git-cache"
@@ -98,17 +97,16 @@ jobs:
         gclient
         
         # Create .gclient file
-        Set-Content -Path .gclient -Value @'
-solutions = [
-  {
-    "name": "src",
-    "url": "https://chromium.googlesource.com/chromium/src.git",
-    "managed": False,
-    "custom_deps": {},
-    "custom_vars": {},
-  },
-]
-'@
+        $gclientContent = 'solutions = [
+          {
+            "name": "src",
+            "url": "https://chromium.googlesource.com/chromium/src.git",
+            "managed": False,
+            "custom_deps": {},
+            "custom_vars": {},
+          },
+        ]'
+        Set-Content -Path .gclient -Value $gclientContent
         
         # Sync with specific options
         gclient sync --no-history --with_branch_heads --with_tags
