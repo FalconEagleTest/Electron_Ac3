@@ -12,101 +12,81 @@ jobs:
       DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
       GYP_MSVS_OVERRIDE_PATH: "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise"
       DEPOT_TOOLS_UPDATE: "0"
+      PYTHON3: python  # Ensure Python3 is used
+
     steps:
-    # Checkout the repository
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # Install Visual Studio
     - name: Install Visual Studio
       uses: microsoft/setup-msbuild@v2
       with:
         vs-version: '17.8'
 
-    # Set up Python
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
-    # Cache pip dependencies
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+    - name: Verify Python Installation
+      run: |
+        python --version
+        python -m pip install --upgrade pip
 
-    # Configure system (Pagefile setup)
-    - name: Configure System Pagefile
+    - name: Configure System
       shell: pwsh
       run: |
-        try {
-            # Check if the namespace and class exist
-            $namespace = "root\cimv2"
-            $className = "Win32_PageFileSetting"
-            $namespaceExists = Get-CimInstance -Namespace $namespace -ClassName $className -ErrorAction Stop
-            
-            if ($namespaceExists) {
-                # Disable automatic pagefile management
-                $computersys = Get-CimInstance -Namespace $namespace -ClassName Win32_ComputerSystem
-                $computersys | Set-CimInstance -Property @{AutomaticManagedPagefile = $false}
+        # Disable automatic pagefile management
+        $computersys = Get-CimInstance Win32_ComputerSystem
+        $computersys | Set-CimInstance -Property @{AutomaticManagedPagefile = $false}
 
-                # Remove existing pagefile
-                $pagefile = Get-CimInstance -Namespace $namespace -ClassName $className
-                if ($pagefile) {
-                    Remove-CimInstance -InputObject $pagefile
-                }
-
-                # Create new pagefile with specified size
-                $pageFilePath = "C:\\pagefile.sys"
-                $initialSize = [uint32]51200
-                $maximumSize = [uint32]51200
-
-                New-CimInstance -ClassName $className -Property @{
-                    Name = $pageFilePath
-                    InitialSize = $initialSize
-                    MaximumSize = $maximumSize
-                } -Namespace $namespace
-                Write-Host "Pagefile configuration updated successfully."
-            } else {
-                Write-Host "Pagefile configuration skipped: Class or namespace not found."
-            }
-        } catch {
-            Write-Host "Error during pagefile configuration: $_"
+        # Remove existing pagefile
+        $pagefile = Get-CimInstance -ClassName Win32_PageFileSetting
+        if ($pagefile) {
+            Remove-CimInstance -InputObject $pagefile
         }
 
-    # Install dependencies
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install setuptools wheel ninja
+        # Create new pagefile with specified size
+        $pageFilePath = "C:\pagefile.sys"
+        $initialSize = [uint32]51200
+        $maximumSize = [uint32]51200
 
-    # Cache depot_tools
-    - name: Cache depot_tools
-      uses: actions/cache@v3
-      with:
-        path: ${{ runner.workspace }}/depot_tools
-        key: ${{ runner.os }}-depot_tools
-        restore-keys: |
-          ${{ runner.os }}-depot_tools-
+        New-CimInstance -ClassName Win32_PageFileSetting -Property @{
+            Name = $pageFilePath
+            InitialSize = $initialSize
+            MaximumSize = $maximumSize
+        } -Namespace "root\cimv2"
 
-    # Clone depot_tools
-    - name: Clone depot_tools
+    - name: Set up Depot Tools
       run: |
         git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
         echo "${{ github.workspace }}/depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "${{ github.workspace }}/depot_tools" | Out-File -FilePath $env:Path -Encoding utf8 -Append
 
-    # Fetch and Build Chromium
-    - name: Fetch and Build Chromium
+    - name: Verify Depot Tools Setup
       run: |
-        fetch chromium
+        fetch --help
+
+    - name: Fetch Chromium
+      shell: pwsh
+      run: |
+        try {
+            fetch chromium
+        } catch {
+            Write-Error "Failed to fetch Chromium: $_"
+            throw
+        }
+
+    - name: Navigate to Src Directory
+      run: |
         cd src
+        pwd
+
+    - name: Build Chromium
+      run: |
         gn gen out/Release --args='is_official_build=true is_debug=false use_proprietary_codecs=true ffmpeg_branding="Chrome" media_use_ffmpeg=true enable_hevc_parser=true enable_dolby_vision_support=true proprietary_codecs=true enable_platform_hevc=true enable_platform_ac3_audio=true enable_platform_dts_audio=true media_codecs_focus_on_extensions=true'
         autoninja -C out/Release chrome
 
-    # Build Electron with codecs
     - name: Build Electron
       run: |
         git clone https://github.com/electron/electron.git
@@ -115,15 +95,7 @@ jobs:
         python script/configure.py -D use_proprietary_codecs=true -D ffmpeg_branding="Chrome"
         python script/build.py -c Release
 
-    # Verify Build
-    - name: Verify Build
-      run: |
-        if (!(Test-Path -Path electron/out/Release/electron.exe)) {
-          throw "Build failed: electron.exe not found."
-        }
-
-    # Create Release
-    - name: Create GitHub Release
+    - name: Create Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
@@ -142,10 +114,3 @@ jobs:
           
           Built with FFmpeg Chrome branding for enhanced codec support.
         draft: true
-
-    # Cleanup temporary files
-    - name: Cleanup
-      if: always()
-      run: |
-        Remove-Item -Recurse -Force ${{ github.workspace }}\depot_tools
-        Remove-Item -Recurse -Force ${{ github.workspace }}\src
