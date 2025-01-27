@@ -7,11 +7,6 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 720  # Build can take several hours
-    env:
-      PYTHONIOENCODING: 'utf-8'
-      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
-      DEPOT_TOOLS_UPDATE: '0'
-      CHROME_HEADLESS: '1'
     steps:
     - uses: actions/checkout@v4
     
@@ -72,51 +67,26 @@ jobs:
             throw "Visual Studio path not found"
         }
     
-    - name: Setup Git Cache
-      shell: pwsh
-      run: |
-        # Create git cache directory
-        New-Item -Path "C:\git-cache" -ItemType Directory -Force
-        $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
-        $env:GIT_CACHE_PATH = "C:\git-cache"
-        
-        # Configure git
-        git config --global core.autocrlf false
-        git config --global core.filemode false
-        git config --global core.symlinks false
-        git config --global branch.autosetuprebase always
-        
-    - name: Configure Git
-      shell: pwsh
-      run: |
-        # Configure git for large repos
-        git config --global core.compression 0
-        git config --global core.fileMode false
-        git config --global core.symlinks false
-        git config --global core.preloadIndex true
-        git config --global core.fscache true
-        
-        # Create and configure git cache directory
-        New-Item -Path "C:\git-cache" -ItemType Directory -Force
-        $env:GIT_CACHE_PATH = "C:\git-cache"
-    
     - name: Fetch Chromium
-      shell: pwsh
-      env:
-        DEPOT_TOOLS_WIN_TOOLCHAIN: 0
-        DEPOT_TOOLS_UPDATE: 0
       run: |
-        # Use fetch tool with specific options
-        fetch --no-history --nohooks chromium
+        # Configure git for large checkouts
+        git config --global core.compression 0
+        git config --global core.packedGitLimit 512m
+        git config --global core.packedGitWindowSize 512m
+        git config --global pack.deltaCacheSize 2047m
+        git config --global pack.packSizeLimit 2047m
+        git config --global pack.windowMemory 2047m
         
-        # Run gclient with specific config after fetch
-        gclient runhooks
+        # Fetch Chromium
+        fetch --no-history chromium
         
     - name: Configure and Build Chromium
       shell: pwsh
       run: |
         cd src
-        $args = @'
+        
+        # Create GN args file
+        $gnArgs = @"
         is_official_build = true
         is_debug = false
         use_proprietary_codecs = true
@@ -131,9 +101,15 @@ jobs:
         media_codecs_focus_on_extensions = true
         is_component_build = false
         target_cpu = "x64"
-        '@
-        $args | Out-File -FilePath "args.gn" -Encoding utf8
+"@
+        
+        # Write args to file
+        $gnArgs | Out-File -FilePath "args.gn" -Encoding utf8
+        
+        # Generate ninja files
         gn gen out/Release --args="$(Get-Content args.gn -Raw)"
+        
+        # Build Chrome
         autoninja -C out/Release chrome
     
     - name: Build Electron
