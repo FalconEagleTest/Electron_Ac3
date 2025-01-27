@@ -3,12 +3,10 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 720  # Build can take several hours
-
     steps:
     - uses: actions/checkout@v4
     
@@ -25,16 +23,22 @@ jobs:
     - name: Configure System
       shell: pwsh
       run: |
-        $computersys = Get-WmiObject Win32_ComputerSystem -EnableAllPrivileges
-        $computersys.AutomaticManagedPagefile = $false
-        $computersys.Put()
+        # Disable automatic pagefile management
+        $computersys = Get-CimInstance Win32_ComputerSystem
+        $computersys | Set-CimInstance -Property @{AutomaticManagedPagefile = $false}
         
-        $pagefile = Get-WmiObject -Query "Select * From Win32_PageFileSetting Where Name='C:\\pagefile.sys'"
+        # Remove existing pagefile
+        $pagefile = Get-CimInstance -ClassName Win32_PageFileSetting
         if ($pagefile) {
-            $pagefile.Delete()
+            Remove-CimInstance -InputObject $pagefile
         }
         
-        Set-WmiInstance -Class Win32_PageFileSetting -Arguments @{Name='C:\pagefile.sys'; InitialSize=51200; MaximumSize=51200}
+        # Create new pagefile with specified size
+        New-CimInstance -ClassName Win32_PageFileSetting -Property @{
+            Name = "C:\pagefile.sys"
+            InitialSize = 51200
+            MaximumSize = 51200
+        }
     
     - name: Install dependencies
       run: |
