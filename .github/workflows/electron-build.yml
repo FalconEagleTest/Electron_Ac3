@@ -42,26 +42,40 @@ jobs:
     - name: Configure System Pagefile
       shell: pwsh
       run: |
-        # Disable automatic pagefile management
-        $computersys = Get-CimInstance Win32_ComputerSystem
-        $computersys | Set-CimInstance -Property @{AutomaticManagedPagefile = $false}
+        try {
+            # Check if the namespace and class exist
+            $namespace = "root\cimv2"
+            $className = "Win32_PageFileSetting"
+            $namespaceExists = Get-CimInstance -Namespace $namespace -ClassName $className -ErrorAction Stop
+            
+            if ($namespaceExists) {
+                # Disable automatic pagefile management
+                $computersys = Get-CimInstance -Namespace $namespace -ClassName Win32_ComputerSystem
+                $computersys | Set-CimInstance -Property @{AutomaticManagedPagefile = $false}
 
-        # Remove existing pagefile
-        $pagefile = Get-CimInstance -ClassName Win32_PageFileSetting
-        if ($pagefile) {
-            Remove-CimInstance -InputObject $pagefile
+                # Remove existing pagefile
+                $pagefile = Get-CimInstance -Namespace $namespace -ClassName $className
+                if ($pagefile) {
+                    Remove-CimInstance -InputObject $pagefile
+                }
+
+                # Create new pagefile with specified size
+                $pageFilePath = "C:\\pagefile.sys"
+                $initialSize = [uint32]51200
+                $maximumSize = [uint32]51200
+
+                New-CimInstance -ClassName $className -Property @{
+                    Name = $pageFilePath
+                    InitialSize = $initialSize
+                    MaximumSize = $maximumSize
+                } -Namespace $namespace
+                Write-Host "Pagefile configuration updated successfully."
+            } else {
+                Write-Host "Pagefile configuration skipped: Class or namespace not found."
+            }
+        } catch {
+            Write-Host "Error during pagefile configuration: $_"
         }
-
-        # Create new pagefile with specified size
-        $pageFilePath = "C:\\pagefile.sys"
-        $initialSize = [uint32]51200
-        $maximumSize = [uint32]51200
-
-        New-CimInstance -ClassName Win32_PageFileSetting -Property @{
-            Name = $pageFilePath
-            InitialSize = $initialSize
-            MaximumSize = $maximumSize
-        } -Namespace "root\\cimv2"
 
     # Install dependencies
     - name: Install Dependencies
