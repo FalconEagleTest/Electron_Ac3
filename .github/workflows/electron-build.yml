@@ -34,11 +34,15 @@ jobs:
         }
         
         # Create new pagefile with specified size
+        $pageFilePath = "C:\pagefile.sys"
+        $initialSize = [uint32]51200
+        $maximumSize = [uint32]51200
+        
         New-CimInstance -ClassName Win32_PageFileSetting -Property @{
-            Name = "C:\pagefile.sys"
-            InitialSize = 51200
-            MaximumSize = 51200
-        }
+            Name = $pageFilePath
+            InitialSize = $initialSize
+            MaximumSize = $maximumSize
+        } -Namespace "root\cimv2"
     
     - name: Install dependencies
       run: |
