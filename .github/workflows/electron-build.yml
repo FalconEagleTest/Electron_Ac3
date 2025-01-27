@@ -89,9 +89,7 @@ jobs:
       shell: pwsh
       run: |
         cd src
-        
-        # Create GN args file
-        @'
+        $args = @'
         is_official_build = true
         is_debug = false
         use_proprietary_codecs = true
@@ -106,12 +104,9 @@ jobs:
         media_codecs_focus_on_extensions = true
         is_component_build = false
         target_cpu = "x64"
-'@ | Out-File -FilePath "args.gn" -Encoding utf8
-        
-        # Generate ninja files
+        '@
+        $args | Out-File -FilePath "args.gn" -Encoding utf8
         gn gen out/Release --args="$(Get-Content args.gn -Raw)"
-        
-        # Build Chrome
         autoninja -C out/Release chrome
     
     - name: Build Electron
