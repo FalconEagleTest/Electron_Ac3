@@ -7,11 +7,6 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 720  # Build can take several hours
-    env:
-      DEPOT_TOOLS_WIN_TOOLCHAIN: 0
-      DEPOT_TOOLS_UPDATE: 0
-      PYTHONIOENCODING: utf-8
-      CHROME_HEADLESS: 1
     steps:
     - uses: actions/checkout@v4
     
@@ -54,80 +49,25 @@ jobs:
         python -m pip install --upgrade pip
         pip install setuptools wheel ninja
     
-    - name: Setup Build Environment
-      shell: pwsh
+    - name: Clone depot_tools
       run: |
-        # Clone depot_tools
         git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-        
-        # Configure git
-        git config --global core.autocrlf false
-        git config --global core.filemode false
-        git config --global core.longpaths true
-        
-        # Add depot_tools to path
-        $env:Path = "${{ github.workspace }}\depot_tools;$env:Path"
-        echo "${{ github.workspace }}\depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        
-        # Set Visual Studio path
+        echo "${{ github.workspace }}/depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    
+    - name: Configure Windows Toolchain
+      run: |
+        $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
         $env:GYP_MSVS_OVERRIDE_PATH = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-        
-        # Create and set git cache
-        New-Item -Path "C:\git-cache" -ItemType Directory -Force
-        $env:GIT_CACHE_PATH = "C:\git-cache"
-        
-        # Initialize gclient
-        gclient
+        $env:DEPOT_TOOLS_UPDATE = "0"
     
-    - name: Fetch Chromium
-      shell: pwsh
+    - name: Fetch and Build Chromium
       run: |
-        # Use the fetch tool with retry logic
-        $maxAttempts = 3
-        $attempt = 1
-        do {
-            try {
-                Write-Host "Attempt $attempt to fetch chromium..."
-                fetch --no-history chromium
-                $success = $true
-            }
-            catch {
-                $success = $false
-                if ($attempt -lt $maxAttempts) {
-                    Write-Host "Fetch failed, waiting before retry..."
-                    Start-Sleep -Seconds 30
-                }
-                $attempt++
-            }
-        } while (!$success -and $attempt -le $maxAttempts)
-        
-        if (!$success) {
-            throw "Failed to fetch chromium after $maxAttempts attempts"
-        }
-    
-    - name: Build Chromium
-      shell: pwsh
-      run: |
+        fetch chromium
         cd src
-        $args = "is_official_build = true
-        is_debug = false
-        use_proprietary_codecs = true
-        ffmpeg_branding = `"Chrome`"
-        media_use_ffmpeg = true
-        enable_hevc_parser = true
-        enable_dolby_vision_support = true
-        proprietary_codecs = true
-        enable_platform_hevc = true
-        enable_platform_ac3_audio = true
-        enable_platform_dts_audio = true
-        media_codecs_focus_on_extensions = true"
-        
-        $args | Out-File -FilePath "args.gn" -Encoding utf8
-        gn gen out/Release --args="$(Get-Content args.gn -Raw)"
+        gn gen out/Release --args='is_official_build=true is_debug=false use_proprietary_codecs=true ffmpeg_branding="Chrome" media_use_ffmpeg=true enable_hevc_parser=true enable_dolby_vision_support=true proprietary_codecs=true enable_platform_hevc=true enable_platform_ac3_audio=true enable_platform_dts_audio=true media_codecs_focus_on_extensions=true'
         autoninja -C out/Release chrome
     
     - name: Build Electron
-      shell: pwsh
       run: |
         git clone https://github.com/electron/electron.git
         cd electron
