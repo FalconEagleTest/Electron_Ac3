@@ -57,7 +57,7 @@ jobs:
         $initialSize = [uint32]51200
         $maximumSize = [uint32]51200
 
-        New-CimInstance -ClassName Win32_PageFileSetting -Property @ {
+        New-CimInstance -ClassName Win32_PageFileSetting -Property @{
             Name = $pageFilePath
             InitialSize = $initialSize
             MaximumSize = $maximumSize
