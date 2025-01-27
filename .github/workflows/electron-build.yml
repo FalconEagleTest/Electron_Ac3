@@ -23,9 +23,18 @@ jobs:
         python-version: '3.11'
         
     - name: Configure System
+      shell: pwsh
       run: |
-        wmic computersystem set AutomaticManagedPagefile=False
-        wmic pagefileset create name="C:\pagefile.sys",initialsize=51200,maximumsize=51200
+        $computersys = Get-WmiObject Win32_ComputerSystem -EnableAllPrivileges
+        $computersys.AutomaticManagedPagefile = $false
+        $computersys.Put()
+        
+        $pagefile = Get-WmiObject -Query "Select * From Win32_PageFileSetting Where Name='C:\\pagefile.sys'"
+        if ($pagefile) {
+            $pagefile.Delete()
+        }
+        
+        Set-WmiInstance -Class Win32_PageFileSetting -Arguments @{Name='C:\pagefile.sys'; InitialSize=51200; MaximumSize=51200}
     
     - name: Install dependencies
       run: |
