@@ -61,12 +61,10 @@ jobs:
       run: |
         # Clone depot_tools
         git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-        # Add depot_tools to the PATH environment variable permanently for the current session
-        setx PATH "$env:PATH;${{ github.workspace }}/depot_tools"
-        # Restart the shell to apply the new PATH
-        RefreshEnv
-        # Verify depot_tools is in the PATH by running fetch --help
-        fetch --help
+        # Add depot_tools to the PATH temporarily for the current session
+        $env:PATH = "$env:PATH;${{ github.workspace }}/depot_tools"
+        # Use fetch from depot_tools directly
+        & "${{ github.workspace }}/depot_tools/fetch" --help
 
     - name: Verify Depot Tools Setup
       run: |
